@@ -120,7 +120,7 @@ float Controller::getAAT() const
 tuple<uint32_t, uint8_t, uint8_t> Controller::splitAddress(uint32_t address)
 {
     uint8_t offset = address & 0b11;
-    uint8_t index = (address >> 2) && 0b1111;
+    uint8_t index = (address >> 2) & 0b1111;
     uint32_t tag = address >> 6;
     return tuple(tag, index, offset);
 }
