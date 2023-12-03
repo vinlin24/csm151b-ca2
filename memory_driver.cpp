@@ -60,7 +60,7 @@ int main(int argc, char const *argv[])
 {
     if (argc != 2)
     {
-        cerr << "USAGE: " << argv[0] << " FILENAME [MODE]" << endl;
+        cerr << "USAGE: " << argv[0] << " FILENAME" << endl;
         return EINVAL;
     }
 
