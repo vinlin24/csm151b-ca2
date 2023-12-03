@@ -37,11 +37,6 @@
 // Our cache design also assumes that every line is one block.
 struct CacheBlock
 {
-    // Original memory address this cache block is for (memory address of
-    // data[0]). This saves the complexity of regenerating the address from tag
-    // + index.
-    uint32_t address;
-
     // The tag used to validate that this cache block actually corresponds to
     // the memory address used to access it. Computed from the remaining bits of
     // the address after computing the offset and index bits.
