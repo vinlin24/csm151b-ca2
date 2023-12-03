@@ -21,6 +21,9 @@ public:
     // Print the contents of main memory to stderr for debugging purposes.
     void dumpMemory() const;
 
+    // Print the blocks current in each cache to stderr for debugging purposes.
+    void dumpCacheState() const;
+
 private:
     // Direct-mapped L1 cache.
     CacheBlock m_L1[L1_CACHE_SETS];

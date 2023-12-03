@@ -8,6 +8,8 @@
 
 #include "controller.h"
 
+#define DUMP_MEMORY false
+
 using namespace std;
 
 struct Trace
@@ -70,24 +72,31 @@ int main(int argc, char const *argv[])
         cerr << "Error opening " << inputFileName << "." << endl;
         return EXIT_FAILURE;
     }
-    vector<Trace> const traces = readTraces(inputFile);
 
+    vector<Trace> const traces = readTraces(inputFile);
     Controller controller;
+
+    // Main program loop.
+
     for (Trace const &trace : traces)
     {
         if (trace.op == Trace::READ)
         {
             uint8_t byte = controller.loadByte(trace.address);
-            cerr << "Loaded " << static_cast<int>(byte) << " from "
-                 << trace.address << "." << endl;
+            cerr << "LOADED " << trace.address << ": "
+                 << static_cast<int>(byte) << endl;
         }
         else
         {
             controller.storeByte(trace.address, trace.data);
-            cerr << "Stored " << static_cast<int>(trace.data) << " at "
-                 << trace.address << "." << endl;
+            cerr << "STORED " << trace.address << ": "
+                 << static_cast<int>(trace.data) << endl;
         }
+        controller.dumpCacheState();
+#if DUMP_MEMORY
         controller.dumpMemory();
+#endif // DUMP_MEMORY
+        cerr << endl;
     }
 
     double L1MissRate = controller.getL1MissRate();

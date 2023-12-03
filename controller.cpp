@@ -209,6 +209,51 @@ void Controller::dumpMemory() const
     }
 }
 
+void Controller::dumpCacheState() const
+{
+    cerr << "L1 blocks: ";
+    for (size_t index = 0; index < L1_CACHE_SETS; index++)
+    {
+        CacheBlock const &block = m_L1[index];
+        if (!block.valid)
+            continue;
+
+        uint32_t address = (block.tag << 6) | (index << 2);
+        uint32_t wordNum = address >> 2; // To match Campuswire debugging.
+        cerr << wordNum << " ";
+    }
+    cerr << endl;
+
+    cerr << "VC blocks: ";
+    for (size_t way = 0; way < VICTIM_SIZE; way++)
+    {
+        CacheBlock const &block = m_VC[way];
+        if (!block.valid)
+            continue;
+
+        uint32_t address = block.tag << 2;
+        uint32_t wordNum = address >> 2; // To match Campuswire debugging.
+        cerr << wordNum << " ";
+    }
+    cerr << endl;
+
+    cerr << "L2 blocks: ";
+    for (size_t index = 0; index < L2_CACHE_SETS; index++)
+    {
+        for (size_t way = 0; way < L2_CACHE_WAYS; way++)
+        {
+            CacheBlock const &block = m_L2[index][way];
+            if (!block.valid)
+                continue;
+
+            uint32_t address = (block.tag << 6) | (index << 2);
+            uint32_t wordNum = address >> 2; // To match Campuswire debugging.
+            cerr << wordNum << " ";
+        }
+    }
+    cerr << endl;
+}
+
 void Controller::updateVictimMRU(uint8_t mruWay)
 {
     m_VC[mruWay].lruPosition = VICTIM_SIZE - 1;
@@ -249,7 +294,9 @@ optional<MemoryBlock> Controller::insertIntoL1(MemoryBlock const &bytes)
 
     // If the block was a vacancy, it wasn't an eviction.
     if (!evictedBlock.valid)
+    {
         return nullopt;
+    }
 
     // Otherwise, try to insert the evicted bytes into the lower level cache.
     MemoryBlock evictedBytes;
