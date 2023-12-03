@@ -31,3 +31,7 @@
 *.out
 *.app
 memory_driver
+
+# Throwaway trace files
+*.txt
+!traces/*.txt
