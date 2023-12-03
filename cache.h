@@ -1,9 +1,8 @@
 #ifndef CACHE_H_INCLUDED
 #define CACHE_H_INCLUDED
 
-#include <array>
 #include <cstdint>
-#include <tuple>
+#include <optional>
 
 // Number of sets (indexable rows) in our L1 cache design.
 #define L1_CACHE_SETS 16
@@ -20,32 +19,6 @@
 // Number of entries in our victim cache design.
 #define VICTIM_SIZE 4
 
-// Number of addressable bytes in our main memory design.
-#define MEM_SIZE 4096
-
-enum Operation
-{
-    READ,
-    WRITE,
-};
-
-struct Trace
-{
-    Operation op;
-    uint32_t address;
-    uint8_t data;
-};
-
-struct Stats
-{
-    unsigned missL1;
-    unsigned missL2;
-    unsigned missVC;
-    unsigned accessL1;
-    unsigned accessL2;
-    unsigned accessVC;
-};
-
 struct CacheBlock
 {
     // The tag used to validate that this cache block actually corresponds to
@@ -53,8 +26,8 @@ struct CacheBlock
     // the address after computing the offset and index bits.
     uint32_t tag;
 
-    // The actual 4-byte data to be stored at this block.
-    uint8_t data[4];
+    // The actual bytes to be stored at this block.
+    uint8_t data[BLOCK_SIZE];
 
     // Higher means more recently used. Only applicable to associative caches
     // with a LRU eviction policy.
@@ -64,44 +37,42 @@ struct CacheBlock
     bool valid;
 };
 
-class Controller
+class L1Cache
 {
 public:
-    Controller();
-    void processTrace(Trace const &trace);
+    L1Cache();
 
-    float getL1MissRate() const;
-    float getL2MissRate() const;
-    float getAAT() const;
-
-    // Print the contents of main memory to stderr for debugging purposes.
-    void dumpMemory() const;
+    std::optional<uint8_t> readByte(uint32_t address) const;
+    bool writeByte(uint32_t address, uint8_t byte);
 
 private:
-    // Direct-mapped L1 cache.
-    CacheBlock m_L1[L1_CACHE_SETS];
+    CacheBlock m_blocks[L1_CACHE_SETS];
+};
 
-    // Fully-associative victim cache.
-    CacheBlock m_VC[VICTIM_SIZE];
+class L2Cache
+{
+public:
+    L2Cache();
 
-    // Set-associative L2 cache.
-    CacheBlock m_L2[L2_CACHE_SETS][L2_CACHE_WAYS];
+    std::optional<uint8_t> readByte(uint32_t address);
+    bool writeByte(uint32_t address, uint8_t byte);
 
-    // Byte-addressable main memory.
-    std::array<uint8_t, MEM_SIZE> m_MM;
+private:
+    CacheBlock m_blocks[L2_CACHE_SETS][L2_CACHE_WAYS];
+    void updateMRU(size_t index, size_t way);
+};
 
-    // Keeps track of the current load stats (access and miss counts).
-    Stats m_stats;
+class VictimCache
+{
+public:
+    VictimCache();
 
-    // TODO.
-    uint8_t loadByte(uint32_t address);
+    std::optional<uint8_t> readByte(uint32_t address);
+    bool writeByte(uint32_t address, uint8_t byte);
 
-    // TODO.
-    void storeByte(uint32_t address, uint8_t byte);
-
-    // Split a memory address into tag, index, offset.
-    static std::tuple<uint32_t, uint8_t, uint8_t>
-    splitAddress(uint32_t address);
+private:
+    CacheBlock m_blocks[VICTIM_SIZE];
+    void updateMRU(size_t way);
 };
 
 #endif // CACHE_H_INCLUDED

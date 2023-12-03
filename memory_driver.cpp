@@ -5,7 +5,7 @@
 #include <sstream>
 #include <vector>
 
-#include "cache.h"
+#include "controller.h"
 
 using namespace std;
 
@@ -25,7 +25,7 @@ static vector<Trace> const readTraces(ifstream &inputFile)
 
         bool memR = stoi(s1);
         bool memW = stoi(s2);
-        if (memR && memW || !memR && !memW)
+        if ((memR && memW) || (!memR && !memW))
             throw std::runtime_error("Invalid combination of MemR and MemW");
 
         Trace trace;

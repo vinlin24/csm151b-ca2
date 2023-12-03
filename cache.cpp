@@ -1,123 +1,13 @@
-#include <iostream>
-
 #include "cache.h"
+
+#include <iostream>
+#include <tuple>
 
 using namespace std;
 
-Controller::Controller() : m_MM{0}, m_stats{0}
-{
-    for (size_t index = 0; index < L1_CACHE_SETS; index++)
-        m_L1[index].valid = false;
-
-    for (size_t way = 0; way < VICTIM_SIZE; way++)
-        m_VC[way].valid = false;
-
-    for (size_t index = 0; index < L2_CACHE_SETS; index++)
-        for (int way = 0; way < L2_CACHE_WAYS; way++)
-            m_L2[index][way].valid = false;
-}
-
-void Controller::processTrace(Trace const &trace)
-{
-    if (trace.op == READ)
-    {
-        uint8_t byte = loadByte(trace.address);
-        cerr << "Loaded " << static_cast<int>(byte) << "." << endl;
-    }
-    else
-    {
-        storeByte(trace.address, trace.data);
-        cerr << "Stored " << static_cast<int>(trace.data) << " to "
-             << trace.address << "." << endl;
-    }
-}
-
-uint8_t Controller::loadByte(uint32_t address)
-{
-    // TODO.
-}
-
-void Controller::storeByte(uint32_t address, uint8_t byte)
-{
-    auto [tag, index, offset] = splitAddress(address);
-
-    // Case A: L1 hit.
-
-    CacheBlock &L1Block = m_L1[index];
-    if (L1Block.valid && L1Block.tag == tag)
-    {
-        L1Block.data[offset] = byte;
-        m_MM[address] = byte; // Write-through.
-        return;
-    }
-
-    // Case B: L1 Miss, VC hit.
-
-    uint32_t VCTag = address >> 2;
-    for (size_t way = 0; way < VICTIM_SIZE; way++)
-    {
-        CacheBlock &VCBlock = m_VC[way];
-        if (!VCBlock.valid || VCBlock.tag != VCTag)
-            continue;
-
-        VCBlock.data[offset] = byte;
-
-        // Update LRU positions. TODO: Make this into a helper.
-        VCBlock.lruPosition = VICTIM_SIZE - 1;
-        for (size_t i = 0; i < VICTIM_SIZE; i++)
-        {
-            if (i == way || m_VC[i].lruPosition == 0)
-                continue;
-            m_VC[i].lruPosition--;
-        }
-
-        m_MM[address] = byte; // Write-through.
-        return;
-    }
-
-    // Case C: L1 Miss, VC Miss L2 Hit.
-
-    for (size_t way = 0; way < L2_CACHE_WAYS; way++)
-    {
-        CacheBlock &L2Block = m_L2[index][way];
-        if (!L2Block.valid || L2Block.tag != tag)
-            continue;
-
-        L2Block.data[offset] = byte;
-
-        // Update LRU positions. TODO: Make this into a helper.
-        L2Block.lruPosition = L2_CACHE_WAYS - 1;
-        for (size_t i = 0; i < L2_CACHE_WAYS; i++)
-        {
-            if (i == way || m_L2[index][i].lruPosition == 0)
-                continue;
-            m_L2[index][i].lruPosition--;
-        }
-
-        m_MM[address] = byte; // Write-through.
-        return;
-    }
-
-    // Case D: L1 Miss, VC Miss, L2 Miss.
-    m_MM[address] = byte; // Write-no-allocate.
-}
-
-float Controller::getL1MissRate() const
-{
-    return static_cast<float>(m_stats.missL1) / m_stats.accessL1;
-}
-
-float Controller::getL2MissRate() const
-{
-    return static_cast<float>(m_stats.missL2) / m_stats.accessL2;
-}
-
-float Controller::getAAT() const
-{
-    return 0; // TODO.
-}
-
-tuple<uint32_t, uint8_t, uint8_t> Controller::splitAddress(uint32_t address)
+// Split a memory address into tag, index, offset. This is assuming a 16-set
+// cache (4 bit index) and 4-byte block size (2 bit offset).
+static tuple<uint32_t, uint8_t, uint8_t> splitAddress(uint32_t address)
 {
     uint8_t offset = address & 0b11;
     uint8_t index = (address >> 2) & 0b1111;
@@ -125,13 +15,140 @@ tuple<uint32_t, uint8_t, uint8_t> Controller::splitAddress(uint32_t address)
     return tuple(tag, index, offset);
 }
 
-void Controller::dumpMemory() const
+L1Cache::L1Cache()
 {
-    for (size_t address = 0; address < MEM_SIZE; address++)
+    for (size_t index = 0; index < L1_CACHE_SETS; index++)
+        m_blocks[index].valid = false;
+}
+
+optional<uint8_t> L1Cache::readByte(uint32_t address) const
+{
+    auto [tag, index, offset] = splitAddress(address);
+    CacheBlock const &block = m_blocks[index];
+    if (!block.valid || block.tag != tag)
+        return nullopt;
+    return block.data[offset];
+}
+
+bool L1Cache::writeByte(uint32_t address, uint8_t byte)
+{
+    auto [tag, index, offset] = splitAddress(address);
+    CacheBlock &block = m_blocks[index];
+    if (!block.valid || block.tag != tag)
+        return false;
+    block.data[offset] = byte;
+    return true;
+}
+
+L2Cache::L2Cache()
+{
+    for (size_t index = 0; index < L2_CACHE_SETS; index++)
     {
-        uint8_t byte = m_MM[address];
-        if (byte == 0)
+        for (int way = 0; way < L2_CACHE_WAYS; way++)
+        {
+            CacheBlock &block = m_blocks[index][way];
+            block.valid = false;
+            // TODO: IDK if this is the best way to initialize this.
+            block.lruPosition = way;
+        }
+    }
+}
+
+optional<uint8_t> L2Cache::readByte(uint32_t address)
+{
+    auto [tag, index, offset] = splitAddress(address);
+    for (size_t way = 0; way < L2_CACHE_WAYS; way++)
+    {
+        CacheBlock &block = m_blocks[index][way];
+        if (block.valid && block.tag == tag)
+        {
+            updateMRU(index, way);
+            return block.data[offset];
+        }
+    }
+    return nullopt;
+}
+
+bool L2Cache::writeByte(uint32_t address, uint8_t byte)
+{
+    auto [tag, index, offset] = splitAddress(address);
+    for (size_t way = 0; way < L2_CACHE_WAYS; way++)
+    {
+        CacheBlock &block = m_blocks[index][way];
+        if (block.valid && block.tag == tag)
+        {
+            block.data[offset] = byte;
+            updateMRU(index, way);
+            return true;
+        }
+    }
+    return false;
+}
+
+void L2Cache::updateMRU(size_t index, size_t way)
+{
+    CacheBlock *set = m_blocks[index];
+    set[way].lruPosition = L2_CACHE_WAYS - 1; // MRU.
+
+    for (size_t otherWay = 0; otherWay < L2_CACHE_WAYS; otherWay++)
+    {
+        if (otherWay == way || set[otherWay].lruPosition == 0)
             continue;
-        cerr << address << ": " << static_cast<int>(byte) << endl;
+        set[otherWay].lruPosition--;
+    }
+}
+
+VictimCache::VictimCache()
+{
+    for (size_t way = 0; way < VICTIM_SIZE; way++)
+    {
+        CacheBlock &block = m_blocks[way];
+        block.valid = false;
+        // TODO: IDK if this is the best way to initialize this.
+        block.lruPosition = way;
+    }
+}
+
+optional<uint8_t> VictimCache::readByte(uint32_t address)
+{
+    uint8_t offset = address & 0b11;
+    uint32_t tag = address >> 2;
+    for (size_t way = 0; way < VICTIM_SIZE; way++)
+    {
+        CacheBlock &block = m_blocks[way];
+        if (block.valid && block.tag == tag)
+        {
+            updateMRU(way);
+            return block.data[offset];
+        }
+    }
+    return nullopt;
+}
+
+bool VictimCache::writeByte(uint32_t address, uint8_t byte)
+{
+    uint8_t offset = address & 0b11;
+    uint32_t tag = address >> 2;
+    for (size_t way = 0; way < VICTIM_SIZE; way++)
+    {
+        CacheBlock &block = m_blocks[way];
+        if (block.valid && block.tag == tag)
+        {
+            block.data[offset] = byte;
+            updateMRU(way);
+            return true;
+        }
+    }
+    return false;
+}
+
+void VictimCache::updateMRU(size_t way)
+{
+    m_blocks[way].lruPosition = VICTIM_SIZE - 1; // MRU.
+    for (size_t otherWay = 0; otherWay < VICTIM_SIZE; otherWay++)
+    {
+        if (way == otherWay || m_blocks[otherWay].lruPosition == 0)
+            continue;
+        m_blocks[otherWay].lruPosition--;
     }
 }
