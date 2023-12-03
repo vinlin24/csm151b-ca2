@@ -63,17 +63,17 @@ void Controller::storeByte(uint32_t address, uint8_t byte)
     m_MM[address] = byte; // Write-no-allocate.
 }
 
-float Controller::getL1MissRate() const
+double Controller::getL1MissRate() const
 {
-    return static_cast<float>(m_stats.missL1) / m_stats.accessL1;
+    return static_cast<double>(m_stats.missL1) / m_stats.accessL1;
 }
 
-float Controller::getL2MissRate() const
+double Controller::getL2MissRate() const
 {
-    return static_cast<float>(m_stats.missL2) / m_stats.accessL2;
+    return static_cast<double>(m_stats.missL2) / m_stats.accessL2;
 }
 
-float Controller::getAAT() const
+double Controller::getAAT() const
 {
     return 0; // TODO.
 }

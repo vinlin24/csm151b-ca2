@@ -28,9 +28,9 @@ public:
     Controller();
     void processTrace(Trace const &trace);
 
-    float getL1MissRate() const;
-    float getL2MissRate() const;
-    float getAAT() const;
+    double getL1MissRate() const;
+    double getL2MissRate() const;
+    double getAAT() const;
 
     // Print the contents of main memory to stderr for debugging purposes.
     void dumpMemory() const;

@@ -1,6 +1,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -67,11 +68,15 @@ int main(int argc, char const *argv[])
         controller.dumpMemory();
     }
 
-    float L1MissRate = controller.getL1MissRate();
-    float L2MissRate = controller.getL2MissRate();
-    float AAT = controller.getAAT();
+    double L1MissRate = controller.getL1MissRate();
+    double L2MissRate = controller.getL2MissRate();
+    double AAT = controller.getAAT();
 
-    cout << "(" << L1MissRate << "," << L2MissRate << "," << AAT << ")" << endl;
+    cout << "("
+         << setprecision(10) << L1MissRate << ","
+         << setprecision(10) << L2MissRate << ","
+         << setprecision(10) << AAT
+         << ")" << endl;
 
     return EXIT_SUCCESS;
 }
