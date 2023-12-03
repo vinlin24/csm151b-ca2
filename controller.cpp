@@ -318,7 +318,7 @@ optional<MemoryBlock> Controller::insertIntoVC(MemoryBlock const &bytes)
             break;
         }
         // Otherwise continue finding the LRU block.
-        if (blockToUse == nullptr || block.lruPosition > blockToUse->lruPosition)
+        if (blockToUse == nullptr || block.lruPosition < blockToUse->lruPosition)
         {
             blockToUse = &block;
         }
@@ -362,7 +362,7 @@ optional<MemoryBlock> Controller::insertIntoL2(MemoryBlock const &bytes)
             break;
         }
         // Otherwise continue finding the LRU block.
-        if (blockToUse == nullptr || block.lruPosition > blockToUse->lruPosition)
+        if (blockToUse == nullptr || block.lruPosition < blockToUse->lruPosition)
         {
             blockToUse = &block;
         }
