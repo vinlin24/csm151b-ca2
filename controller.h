@@ -51,10 +51,6 @@ private:
     void updateVictimMRU(uint8_t mruWay);
     void updateL2MRU(uint8_t setIndex, uint8_t mruWay);
 
-    void promoteFromVC(uint8_t L1SetIndex, uint8_t VCWay);
-    void promoteFromL2(uint8_t L1SetIndex, uint8_t L2SetIndex, uint8_t L2Way);
-    void cacheFromMM(uint32_t address);
-
     std::optional<MemoryBlock> insertIntoL1(MemoryBlock const &bytes);
     std::optional<MemoryBlock> insertIntoVC(MemoryBlock const &bytes);
     std::optional<MemoryBlock> insertIntoL2(MemoryBlock const &bytes);
