@@ -1,5 +1,5 @@
 #include <cerrno>
-#include <cstring>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -9,15 +9,7 @@
 
 using namespace std;
 
-struct Trace
-{
-    bool MemR;
-    bool MemW;
-    int adr;
-    int data;
-};
-
-static vector<Trace> readTraces(ifstream &inputFile)
+static vector<Trace> const readTraces(ifstream &inputFile)
 {
     string line;
     vector<Trace> traces;
@@ -31,10 +23,14 @@ static vector<Trace> readTraces(ifstream &inputFile)
         getline(ss, s3, ',');
         getline(ss, s4, ',');
 
+        bool memR = stoi(s1);
+        bool memW = stoi(s2);
+        if (memR && memW || !memR && !memW)
+            throw std::runtime_error("Invalid combination of MemR and MemW");
+
         Trace trace;
-        trace.MemR = stoi(s1);
-        trace.MemW = stoi(s2);
-        trace.adr = stoi(s3);
+        trace.op = memR ? READ : WRITE;
+        trace.address = stoi(s3);
         trace.data = stoi(s4);
 
         traces.push_back(trace);
@@ -62,37 +58,19 @@ int main(int argc, char const *argv[])
         cerr << "Error opening " << inputFileName << "." << endl;
         return EXIT_FAILURE;
     }
+    vector<Trace> const traces = readTraces(inputFile);
 
-    vector<Trace> traces = readTraces(inputFile);
-
-    Cache myCache;
-    int myMem[MEM_SIZE];
-
-    int traceCounter = 0;
-    bool cur_MemR;
-    bool cur_MemW;
-    int cur_adr;
-    int cur_data;
-
-    // Main program loop.
-    while (traceCounter < traces.size())
+    Controller controller;
+    for (Trace const &trace : traces)
     {
-        cur_MemR = traces[traceCounter].MemR;
-        cur_MemW = traces[traceCounter].MemW;
-        cur_data = traces[traceCounter].data;
-        cur_adr = traces[traceCounter].adr;
-        traceCounter += 1;
-        // TODO: In your memory controller you need to implement your FSM, LW,
-        // SW, and MM.
-        myCache.controller(cur_MemR, cur_MemW, &cur_data, cur_adr, myMem);
+        controller.processTrace(trace);
     }
 
-    float L1_miss_rate, L2_miss_rate, AAT;
+    float L1MissRate = controller.getL1MissRate();
+    float L2MissRate = controller.getL2MissRate();
+    float AAT = controller.getAAT();
 
-    // TODO: Compute the stats here.
-
-    cout << "(" << L1_miss_rate << "," << L2_miss_rate << "," << AAT << ")"
-         << endl;
+    cout << "(" << L1MissRate << "," << L2MissRate << "," << AAT << ")" << endl;
 
     return EXIT_SUCCESS;
 }

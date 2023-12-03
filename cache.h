@@ -1,55 +1,93 @@
-#include <bitset>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <string>
+#ifndef CACHE_H_INCLUDED
+#define CACHE_H_INCLUDED
 
+#include <array>
+#include <cstdint>
+
+// Number of sets (indexable rows) in our L1 cache design.
 #define L1_CACHE_SETS 16
+
+// Number of sets (indexable rows) in our L2 cache design.
 #define L2_CACHE_SETS 16
-#define VICTIM_SIZE 4
+
+// Number of ways (columns) per set in our L2 cache design.
 #define L2_CACHE_WAYS 8
+
+// Bytes per block.
+#define BLOCK_SIZE 4
+
+// Number of entries in our victim cache design.
+#define VICTIM_SIZE 4
+
+// Number of addressable bytes in our main memory design.
 #define MEM_SIZE 4096
-#define BLOCK_SIZE 4 // Bytes per block.
-#define DM 0
-#define SA 1
+
+enum Operation
+{
+    READ,
+    WRITE,
+};
+
+struct Trace
+{
+    Operation op;
+    uint32_t address;
+    uint32_t data;
+};
+
+struct Stats
+{
+    unsigned missL1;
+    unsigned missL2;
+    unsigned missVC;
+    unsigned accessL1;
+    unsigned accessL2;
+    unsigned accessVC;
+};
 
 struct CacheBlock
 {
-    int tag;          // You need to compute offset and index to find the tag.
-    int lru_position; // For SA only.
-    int data;         // The actual data stored in the cache/memory.
+    // The tag used to validate that this cache block actually corresponds to
+    // the memory address used to access it. Computed from the remaining bits of
+    // the address after computing the offset and index bits.
+    uint32_t tag;
+
+    // The actual 4-byte data to be stored at this block.
+    uint32_t data;
+
+    // Higher means more recently used. Only applicable to associative caches
+    // with a LRU eviction policy.
+    uint8_t lruPosition;
+
+    // Flag for whether this block is currently occupied with actual data.
     bool valid;
-
-    // TODO: Add more things here if needed.
 };
 
-struct Stat
-{
-    int missL1;
-    int missL2;
-    int accL1;
-    int accL2;
-    int accVic;
-    int missVic;
-
-    // TODO: Add more stat if needed. Don't forget to initialize!
-};
-
-class Cache
+class Controller
 {
 public:
-    Cache();
-    void controller(bool MemR, bool MemW, int *data, int adr, int *myMem);
+    Controller();
+    void processTrace(Trace const &trace);
 
-    // TODO: Add more functions here ...
+    float getL1MissRate() const;
+    float getL2MissRate() const;
+    float getAAT() const;
 
 private:
-    CacheBlock L1[L1_CACHE_SETS];                // 1 set per row.
-    CacheBlock L2[L2_CACHE_SETS][L2_CACHE_WAYS]; // x ways per row.
+    // Direct-mapped L1 cache.
+    CacheBlock m_L1[L1_CACHE_SETS];
 
-    // TODO: Add your Victim cache here...
+    // Fully-associative victim cache.
+    CacheBlock m_VC[VICTIM_SIZE];
 
-    Stat myStat;
+    // Set-associative L2 cache.
+    CacheBlock m_L2[L2_CACHE_SETS][L2_CACHE_WAYS];
 
-    // TODO: Add more things here.
+    // Byte-addressable main memory.
+    std::array<uint8_t, MEM_SIZE> m_MM;
+
+    // Keeps track of the current load stats (access and miss counts).
+    Stats m_stats;
 };
+
+#endif // CACHE_H_INCLUDED
