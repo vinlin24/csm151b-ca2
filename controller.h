@@ -1,32 +1,18 @@
 #ifndef CONTROLLER_H_INCLUDED
 #define CONTROLLER_H_INCLUDED
 
-#include <array>
 #include <cstdint>
+#include <optional>
 
 #include "cache.h"
-
-// Number of addressable bytes in our main memory design.
-#define MEM_SIZE 4096
-
-enum Operation
-{
-    READ,
-    WRITE,
-};
-
-struct Trace
-{
-    Operation op;
-    uint32_t address;
-    uint8_t data;
-};
 
 class Controller
 {
 public:
     Controller();
-    void processTrace(Trace const &trace);
+
+    uint8_t loadByte(uint32_t address);
+    void storeByte(uint32_t address, uint8_t byte);
 
     double getL1MissRate() const;
     double getL2MissRate() const;
@@ -37,16 +23,16 @@ public:
 
 private:
     // Direct-mapped L1 cache.
-    L1Cache m_L1;
+    CacheBlock m_L1[L1_CACHE_SETS];
 
     // Fully-associative victim cache.
-    L2Cache m_L2;
+    CacheBlock m_VC[VICTIM_SIZE];
 
     // Set-associative L2 cache.
-    VictimCache m_VC;
+    CacheBlock m_L2[L2_CACHE_SETS][L2_CACHE_WAYS];
 
     // Byte-addressable main memory.
-    std::array<uint8_t, MEM_SIZE> m_MM;
+    uint8_t m_MM[MEM_SIZE];
 
     // Keeps track of the current load stats (access and miss counts).
     struct Stats
@@ -59,11 +45,8 @@ private:
         unsigned accessVC;
     } m_stats;
 
-    // TODO.
-    uint8_t loadByte(uint32_t address);
-
-    // TODO.
-    void storeByte(uint32_t address, uint8_t byte);
+    void updateVictimMRU(uint8_t mruWay);
+    void updateL2MRU(uint8_t setIndex, uint8_t mruWay);
 };
 
 #endif // CONTROLLER_H_INCLUDED

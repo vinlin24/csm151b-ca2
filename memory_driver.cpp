@@ -10,6 +10,17 @@
 
 using namespace std;
 
+struct Trace
+{
+    enum Operation
+    {
+        READ,
+        WRITE,
+    } op;
+    uint32_t address;
+    uint8_t data;
+};
+
 static vector<Trace> const readTraces(ifstream &inputFile)
 {
     string line;
@@ -30,7 +41,7 @@ static vector<Trace> const readTraces(ifstream &inputFile)
             throw std::runtime_error("Invalid combination of MemR and MemW");
 
         Trace trace;
-        trace.op = memR ? READ : WRITE;
+        trace.op = memR ? Trace::READ : Trace::WRITE;
         trace.address = stoi(s3);
         trace.data = stoi(s4);
 
@@ -64,7 +75,18 @@ int main(int argc, char const *argv[])
     Controller controller;
     for (Trace const &trace : traces)
     {
-        controller.processTrace(trace);
+        if (trace.op == Trace::READ)
+        {
+            uint8_t byte = controller.loadByte(trace.address);
+            cerr << "Loaded " << static_cast<int>(byte) << " from "
+                 << trace.address << "." << endl;
+        }
+        else
+        {
+            controller.storeByte(trace.address, trace.data);
+            cerr << "Stored " << static_cast<int>(trace.data) << " at "
+                 << trace.address << "." << endl;
+        }
         controller.dumpMemory();
     }
 

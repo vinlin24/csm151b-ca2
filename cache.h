@@ -2,7 +2,6 @@
 #define CACHE_H_INCLUDED
 
 #include <cstdint>
-#include <optional>
 
 // Number of sets (indexable rows) in our L1 cache design.
 #define L1_CACHE_SETS 16
@@ -19,8 +18,18 @@
 // Number of entries in our victim cache design.
 #define VICTIM_SIZE 4
 
+// Number of addressable bytes in our main memory design.
+#define MEM_SIZE 4096
+
+// The finest level of granularity that our cache operations will operate on.
+// Our cache design also assumes that every line is one block.
 struct CacheBlock
 {
+    // Original memory address this cache block is for (memory address of
+    // data[0]). This saves the complexity of regenerating the address from tag
+    // + index.
+    uint32_t address;
+
     // The tag used to validate that this cache block actually corresponds to
     // the memory address used to access it. Computed from the remaining bits of
     // the address after computing the offset and index bits.
@@ -49,44 +58,6 @@ struct AddressParts
     uint32_t tag;
     uint8_t index;
     uint8_t offset;
-};
-
-class L1Cache
-{
-public:
-    L1Cache();
-
-    std::optional<uint8_t> readByte(AddressParts const &parts) const;
-    bool writeByte(AddressParts const &parts, uint8_t byte);
-
-private:
-    CacheBlock m_blocks[L1_CACHE_SETS];
-};
-
-class L2Cache
-{
-public:
-    L2Cache();
-
-    std::optional<uint8_t> readByte(uint32_t address);
-    bool writeByte(uint32_t address, uint8_t byte);
-
-private:
-    CacheBlock m_blocks[L2_CACHE_SETS][L2_CACHE_WAYS];
-    void updateMRU(size_t index, size_t way);
-};
-
-class VictimCache
-{
-public:
-    VictimCache();
-
-    std::optional<uint8_t> readByte(uint32_t address);
-    bool writeByte(uint32_t address, uint8_t byte);
-
-private:
-    CacheBlock m_blocks[VICTIM_SIZE];
-    void updateMRU(size_t way);
 };
 
 #endif // CACHE_H_INCLUDED
