@@ -1,5 +1,6 @@
 #include "controller.h"
 
+#include <cstring>
 #include <iostream>
 
 using namespace std;
@@ -34,7 +35,93 @@ Controller::Controller() : m_stats{0, 0, 0, 0, 0, 0}
 
 uint8_t Controller::loadByte(uint32_t address)
 {
-    return 0; // TODO.
+    AddressParts parts(address);   // L1 & L2 address segmentation.
+    uint32_t VCTag = address >> 2; // VC address has different segmentation.
+
+    uint8_t byte;
+
+    // Case A: L1 Hit.
+
+    CacheBlock &block = m_L1[parts.index];
+    m_stats.accessL1++;
+    if (block.valid && block.tag == parts.tag)
+    {
+        byte = block.data[parts.offset];
+        return byte;
+    }
+    m_stats.missL1++;
+
+    // Case B: L1 Miss -> VC Hit.
+
+    m_stats.accessVC++;
+    for (size_t way = 0; way < VICTIM_SIZE; way++)
+    {
+        CacheBlock &block = m_VC[way];
+        if (block.valid && block.tag == VCTag)
+        {
+            byte = block.data[parts.offset];
+
+            // Promote VC block to L1.
+            MemoryBlock VCBytes = popFromVC(way);
+            auto evictResult = insertIntoL1(VCBytes);
+            if (evictResult.has_value())
+            {
+                MemoryBlock evictedBytes = evictResult.value();
+                cerr << "Discarded block for addresses " << evictedBytes.address
+                     << "-" << evictedBytes.address + BLOCK_SIZE - 1 << "."
+                     << endl;
+            }
+
+            return byte;
+        }
+    }
+    m_stats.missVC++;
+
+    // Case C: L1 Miss -> VC Miss -> L2 Hit.
+
+    m_stats.accessL2++;
+    CacheBlock *set = m_L2[parts.index];
+    for (size_t way = 0; way < L2_CACHE_WAYS; way++)
+    {
+        CacheBlock &block = set[way];
+        if (block.valid && block.tag == parts.tag)
+        {
+            byte = block.data[parts.offset];
+
+            // Promote L2 block to L1.
+            MemoryBlock L2Bytes = popFromL2(parts.index, way);
+            auto evictResult = insertIntoL1(L2Bytes);
+            if (evictResult.has_value())
+            {
+                MemoryBlock evictedBytes = evictResult.value();
+                cerr << "Discarded block for addresses " << evictedBytes.address
+                     << "-" << evictedBytes.address + BLOCK_SIZE - 1 << "."
+                     << endl;
+            }
+
+            return byte;
+        }
+    }
+    m_stats.missL2++;
+
+    // Case D: L1 Miss -> VC Miss -> L2 Miss -> MM Access.
+
+    byte = m_MM[address];
+
+    // Bring up a new cache block from main memory.
+    MemoryBlock MMBytes;
+    MMBytes.address = address & ~(0b11); // 4-byte aligned.
+    memcpy(MMBytes.data, m_MM + MMBytes.address, BLOCK_SIZE);
+    auto evictResult = insertIntoL1(MMBytes);
+    if (evictResult.has_value())
+    {
+        MemoryBlock evictedBytes = evictResult.value();
+        cerr << "Discarded block for addresses " << evictedBytes.address
+             << "-" << evictedBytes.address + BLOCK_SIZE - 1 << "."
+             << endl;
+    }
+
+    return byte;
 }
 
 void Controller::storeByte(uint32_t address, uint8_t byte)
@@ -134,4 +221,136 @@ void Controller::updateL2MRU(uint8_t setIndex, uint8_t mruWay)
             continue;
         set[otherWay].lruPosition--;
     }
+}
+
+optional<MemoryBlock> Controller::insertIntoL1(MemoryBlock const &bytes)
+{
+    uint8_t setIndex = (bytes.address >> 2) & 0b1111;
+    CacheBlock &block = m_L1[setIndex];
+
+    // Create a copy before overwriting the current block.
+    CacheBlock evictedBlock(block);
+
+    // Overwrite current block with incoming data.
+    block.tag = bytes.address >> 6;
+    memcpy(block.data, bytes.data, BLOCK_SIZE);
+    block.valid = true;
+
+    // If the block was a vacancy, it wasn't an eviction.
+    if (!evictedBlock.valid)
+        return nullopt;
+
+    // Otherwise, try to insert the evicted bytes into the lower level cache.
+    MemoryBlock evictedBytes;
+    evictedBytes.address = (evictedBlock.tag << 6) | (setIndex << 2);
+    memcpy(evictedBytes.data, evictedBlock.data, BLOCK_SIZE);
+    return insertIntoVC(evictedBytes);
+}
+
+optional<MemoryBlock> Controller::insertIntoVC(MemoryBlock const &bytes)
+{
+    // Find the LRU block. If there's still a vacancy, just use that.
+    CacheBlock *blockToUse = nullptr;
+    for (CacheBlock &block : m_VC)
+    {
+        // Vacancy.
+        if (!block.valid)
+        {
+            blockToUse = &block;
+            break;
+        }
+        // Otherwise continue finding the LRU block.
+        if (blockToUse == nullptr || block.lruPosition > blockToUse->lruPosition)
+        {
+            blockToUse = &block;
+        }
+    }
+
+    CacheBlock &block = *blockToUse; // No nullptr?
+
+    // Create a copy before overwriting the current block.
+    CacheBlock evictedBlock(block);
+
+    // Overwrite current block with incoming data.
+    block.tag = bytes.address >> 2;
+    memcpy(block.data, bytes.data, BLOCK_SIZE);
+    // Set the just-written block to the MRU.
+    updateVictimMRU(blockToUse - m_VC);
+    block.valid = true;
+
+    // If the block was a vacancy, it wasn't an eviction.
+    if (!evictedBlock.valid)
+        return nullopt;
+
+    // Otherwise, try to insert the evicted bytes into the lower level cache.
+    MemoryBlock evictedBytes;
+    evictedBytes.address = evictedBlock.tag << 2;
+    memcpy(evictedBytes.data, evictedBlock.data, BLOCK_SIZE);
+    return insertIntoL2(evictedBytes);
+}
+
+optional<MemoryBlock> Controller::insertIntoL2(MemoryBlock const &bytes)
+{
+    uint8_t setIndex = (bytes.address >> 2) & 0b1111;
+
+    // Find the LRU block. If there's still a vacancy, just use that.
+    CacheBlock *blockToUse = nullptr;
+    for (CacheBlock &block : m_L2[setIndex])
+    {
+        // Vacancy.
+        if (!block.valid)
+        {
+            blockToUse = &block;
+            break;
+        }
+        // Otherwise continue finding the LRU block.
+        if (blockToUse == nullptr || block.lruPosition > blockToUse->lruPosition)
+        {
+            blockToUse = &block;
+        }
+    }
+
+    CacheBlock &block = *blockToUse; // No nullptr?
+
+    // Create a copy before overwriting the current block.
+    CacheBlock evictedBlock(block);
+
+    // Overwrite current block with incoming data.
+    block.tag = bytes.address >> 6;
+    memcpy(block.data, bytes.data, BLOCK_SIZE);
+    // Set the just-written block to the MRU.
+    updateL2MRU(setIndex, blockToUse - m_L2[setIndex]);
+    block.valid = true;
+
+    // If the block was a vacancy, it wasn't an eviction.
+    if (!evictedBlock.valid)
+        return nullopt;
+
+    // Otherwise, return the evicted bytes.
+    MemoryBlock evictedBytes;
+    evictedBytes.address = (evictedBlock.tag << 6) | (setIndex << 2);
+    memcpy(evictedBytes.data, evictedBlock.data, BLOCK_SIZE);
+    return bytes;
+}
+
+MemoryBlock Controller::popFromVC(uint8_t way)
+{
+    CacheBlock &block = m_VC[way];
+    block.valid = false;
+
+    MemoryBlock bytes;
+    bytes.address = block.tag << 2;
+    memcpy(bytes.data, block.data, BLOCK_SIZE);
+    return bytes;
+}
+
+MemoryBlock Controller::popFromL2(uint8_t index, uint8_t way)
+{
+    CacheBlock &block = m_L2[index][way];
+    block.valid = false;
+
+    MemoryBlock bytes;
+    bytes.address = (block.tag << 6) | (index << 2);
+    memcpy(bytes.data, block.data, BLOCK_SIZE);
+    return bytes;
 }

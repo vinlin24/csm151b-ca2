@@ -60,4 +60,13 @@ struct AddressParts
     uint8_t offset;
 };
 
+// A cache-agnostic struct for a collection of 4 contiguous bytes in memory.
+// This serves as the "raw" form of a memory block used when bytes need to be
+// moved between cache layers with potentially different address segmentation.
+struct MemoryBlock
+{
+    uint32_t address; // 4-byte aligned.
+    uint8_t data[BLOCK_SIZE];
+};
+
 #endif // CACHE_H_INCLUDED
