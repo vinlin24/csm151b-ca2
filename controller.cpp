@@ -5,7 +5,7 @@
 
 using namespace std;
 
-Controller::Controller() : m_stats{0, 0, 0, 0, 0, 0}
+Controller::Controller() : m_MM{0}, m_stats{0, 0, 0, 0, 0, 0}
 {
     for (size_t index = 0; index < L1_CACHE_SETS; index++)
         m_L1[index].valid = false;
@@ -28,9 +28,6 @@ Controller::Controller() : m_stats{0, 0, 0, 0, 0, 0}
             block.lruPosition = way;
         }
     }
-
-    for (size_t address = 0; address < MEM_SIZE; address++)
-        m_MM[address] = 0;
 }
 
 uint8_t Controller::loadByte(uint32_t address)
