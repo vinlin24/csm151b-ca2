@@ -21,23 +21,23 @@ void Controller::processTrace(Trace const &trace)
 {
     if (trace.op == READ)
     {
-        uint32_t word = loadWord(trace.address);
-        cerr << "Loaded " << word << "." << endl;
+        uint8_t byte = loadByte(trace.address);
+        cerr << "Loaded " << static_cast<int>(byte) << "." << endl;
     }
     else
     {
-        storeWord(trace.address, trace.data);
-        cerr << "Stored " << trace.data << " to " << trace.address << "."
-             << endl;
+        storeByte(trace.address, trace.data);
+        cerr << "Stored " << static_cast<int>(trace.data) << " to "
+             << trace.address << "." << endl;
     }
 }
 
-uint32_t Controller::loadWord(uint32_t address)
+uint8_t Controller::loadByte(uint32_t address)
 {
     // TODO.
 }
 
-void Controller::storeWord(uint32_t address, uint32_t data)
+void Controller::storeByte(uint32_t address, uint8_t byte)
 {
     auto [tag, index, offset] = splitAddress(address);
 
@@ -46,8 +46,8 @@ void Controller::storeWord(uint32_t address, uint32_t data)
     CacheBlock &L1Block = m_L1[index];
     if (L1Block.valid && L1Block.tag == tag)
     {
-        L1Block.data = data;
-        writeWordToMM(address, data); // Write-through.
+        L1Block.data[offset] = byte;
+        m_MM[address] = byte; // Write-through.
         return;
     }
 
@@ -60,7 +60,7 @@ void Controller::storeWord(uint32_t address, uint32_t data)
         if (!VCBlock.valid || VCBlock.tag != VCTag)
             continue;
 
-        VCBlock.data = data;
+        VCBlock.data[offset] = byte;
 
         // Update LRU positions. TODO: Make this into a helper.
         VCBlock.lruPosition = VICTIM_SIZE - 1;
@@ -71,7 +71,7 @@ void Controller::storeWord(uint32_t address, uint32_t data)
             m_VC[i].lruPosition--;
         }
 
-        writeWordToMM(address, data); // Write-through.
+        m_MM[address] = byte; // Write-through.
         return;
     }
 
@@ -83,7 +83,7 @@ void Controller::storeWord(uint32_t address, uint32_t data)
         if (!L2Block.valid || L2Block.tag != tag)
             continue;
 
-        L2Block.data = data;
+        L2Block.data[offset] = byte;
 
         // Update LRU positions. TODO: Make this into a helper.
         L2Block.lruPosition = L2_CACHE_WAYS - 1;
@@ -94,40 +94,12 @@ void Controller::storeWord(uint32_t address, uint32_t data)
             m_L2[index][i].lruPosition--;
         }
 
-        writeWordToMM(address, data); // Write-through.
+        m_MM[address] = byte; // Write-through.
         return;
     }
 
     // Case D: L1 Miss, VC Miss, L2 Miss.
-    writeWordToMM(address, data); // Write-no-allocate.
-}
-
-uint32_t Controller::readWordFromMM(uint32_t address)
-{
-    uint8_t b0 = m_MM[address];
-    uint8_t b1 = m_MM[address + 1];
-    uint8_t b2 = m_MM[address + 2];
-    uint8_t b3 = m_MM[address + 3];
-
-    uint32_t word = 0;
-    word |= b0;
-    word |= (b1 << 8);
-    word |= (b2 << 16);
-    word |= (b3 << 24);
-    return word;
-}
-
-void Controller::writeWordToMM(uint32_t address, uint32_t data)
-{
-    uint8_t b0 = data & 0xFF;
-    uint8_t b1 = (data >> 8) & 0xFF;
-    uint8_t b2 = (data >> 16) & 0xFF;
-    uint8_t b3 = (data >> 24) & 0xFF;
-
-    m_MM[address] = b0;
-    m_MM[address + 1] = b1;
-    m_MM[address + 2] = b2;
-    m_MM[address + 3] = b3;
+    m_MM[address] = byte; // Write-no-allocate.
 }
 
 float Controller::getL1MissRate() const

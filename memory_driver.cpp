@@ -63,7 +63,6 @@ int main(int argc, char const *argv[])
     Controller controller;
     for (Trace const &trace : traces)
     {
-        trace.print();
         controller.processTrace(trace);
         controller.dumpMemory();
     }

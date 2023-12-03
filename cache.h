@@ -3,7 +3,6 @@
 
 #include <array>
 #include <cstdint>
-#include <iostream>
 #include <tuple>
 
 // Number of sets (indexable rows) in our L1 cache design.
@@ -34,20 +33,7 @@ struct Trace
 {
     Operation op;
     uint32_t address;
-    uint32_t data;
-
-    void print() const
-    {
-        if (op == READ)
-        {
-            std::cerr << "(MemR " << address << ")" << std::endl;
-        }
-        else
-        {
-            std::cerr << "(MemW " << address << " <- " << data << ")"
-                      << std::endl;
-        }
-    }
+    uint8_t data;
 };
 
 struct Stats
@@ -68,7 +54,7 @@ struct CacheBlock
     uint32_t tag;
 
     // The actual 4-byte data to be stored at this block.
-    uint32_t data;
+    uint8_t data[4];
 
     // Higher means more recently used. Only applicable to associative caches
     // with a LRU eviction policy.
@@ -108,16 +94,10 @@ private:
     Stats m_stats;
 
     // TODO.
-    uint32_t loadWord(uint32_t address);
+    uint8_t loadByte(uint32_t address);
 
     // TODO.
-    void storeWord(uint32_t address, uint32_t data);
-
-    // Read word from main memory in little endian fashion.
-    uint32_t readWordFromMM(uint32_t address);
-
-    // Write word to main memory in little endian fashion.
-    void writeWordToMM(uint32_t address, uint32_t data);
+    void storeByte(uint32_t address, uint8_t byte);
 
     // Split a memory address into tag, index, offset.
     static std::tuple<uint32_t, uint8_t, uint8_t>
