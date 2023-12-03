@@ -184,7 +184,18 @@ double Controller::getL2MissRate() const
 
 double Controller::getAAT() const
 {
-    return 0; // TODO.
+    // AAT = HitTime + MissRate * MissPenalty.
+
+    double MR_L2 = static_cast<double>(m_stats.missL2) / m_stats.accessL2;
+    double AAT_L2 = L2_HIT_TIME + MR_L2 * MM_ACCESS_TIME;
+
+    double MR_VC = static_cast<double>(m_stats.missVC) / m_stats.accessVC;
+    double AAT_VC = VC_HIT_TIME + MR_VC * AAT_L2;
+
+    double MR_L1 = static_cast<double>(m_stats.missL1) / m_stats.accessL1;
+    double AAT_L1 = L1_HIT_TIME + MR_L1 * AAT_VC;
+
+    return AAT_L1;
 }
 
 void Controller::dumpMemory() const

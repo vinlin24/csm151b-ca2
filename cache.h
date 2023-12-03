@@ -21,6 +21,18 @@
 // Number of addressable bytes in our main memory design.
 #define MEM_SIZE 4096
 
+// Hit time of L1 cache in cycles, as stated in the spec.
+#define L1_HIT_TIME 1
+
+// Hit time of victim cache in cycles, as stated in the spec.
+#define VC_HIT_TIME 1
+
+// Hit time of L2 cache in cycles, as stated in the spec.
+#define L2_HIT_TIME 8
+
+// Access time of main memory in cycles, as stated in the spec.
+#define MM_ACCESS_TIME 100
+
 // The finest level of granularity that our cache operations will operate on.
 // Our cache design also assumes that every line is one block.
 struct CacheBlock
