@@ -29,6 +29,9 @@ uint8_t Controller::loadByte(uint32_t address)
 
 void Controller::storeByte(uint32_t address, uint8_t byte)
 {
+    AddressParts parts(address);   // L1 & L2 address segmentation.
+    uint32_t VCTag = address >> 2; // VC address has different segmentation.
+
     bool written;
 
     // Case A: L1 Hit.

@@ -21,22 +21,20 @@ L1Cache::L1Cache()
         m_blocks[index].valid = false;
 }
 
-optional<uint8_t> L1Cache::readByte(uint32_t address) const
+optional<uint8_t> L1Cache::readByte(AddressParts const &parts) const
 {
-    auto [tag, index, offset] = splitAddress(address);
-    CacheBlock const &block = m_blocks[index];
-    if (!block.valid || block.tag != tag)
+    CacheBlock const &block = m_blocks[parts.index];
+    if (!block.valid || block.tag != parts.tag)
         return nullopt;
-    return block.data[offset];
+    return block.data[parts.offset];
 }
 
-bool L1Cache::writeByte(uint32_t address, uint8_t byte)
+bool L1Cache::writeByte(AddressParts const &parts, uint8_t byte)
 {
-    auto [tag, index, offset] = splitAddress(address);
-    CacheBlock &block = m_blocks[index];
-    if (!block.valid || block.tag != tag)
+    CacheBlock &block = m_blocks[parts.index];
+    if (!block.valid || block.tag != parts.tag)
         return false;
-    block.data[offset] = byte;
+    block.data[parts.offset] = byte;
     return true;
 }
 

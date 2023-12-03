@@ -37,13 +37,27 @@ struct CacheBlock
     bool valid;
 };
 
+// The split version of a memory address as tag, index, offset. This is assuming
+// a 16-set cache (4 bit index) and 4-byte block size (2 bit offset).
+struct AddressParts
+{
+    AddressParts(uint32_t address)
+        : tag(address >> 6),
+          index((address >> 2) & 0b1111),
+          offset(address & 0b11) {}
+
+    uint32_t tag;
+    uint8_t index;
+    uint8_t offset;
+};
+
 class L1Cache
 {
 public:
     L1Cache();
 
-    std::optional<uint8_t> readByte(uint32_t address) const;
-    bool writeByte(uint32_t address, uint8_t byte);
+    std::optional<uint8_t> readByte(AddressParts const &parts) const;
+    bool writeByte(AddressParts const &parts, uint8_t byte);
 
 private:
     CacheBlock m_blocks[L1_CACHE_SETS];
