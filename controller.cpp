@@ -5,6 +5,21 @@
 
 using namespace std;
 
+// Print to stderr the memory that was evicted out of the whole cache system, if
+// present. For debugging purposes. It doesn't seem like the provided test cases
+// are large enough for this to ever be called (demotions never fall off of the
+// LLC = L2).
+static void printEvictionResult(optional<MemoryBlock> const &evictResult)
+{
+    if (evictResult.has_value())
+    {
+        MemoryBlock evictedBytes = evictResult.value();
+        cerr << "Discarded block for addresses " << evictedBytes.address
+             << "-" << evictedBytes.address + BLOCK_SIZE - 1 << "."
+             << endl;
+    }
+}
+
 Controller::Controller() : m_MM{0}, m_stats{0, 0, 0, 0, 0, 0}
 {
     for (size_t index = 0; index < L1_CACHE_SETS; index++)
@@ -14,7 +29,8 @@ Controller::Controller() : m_MM{0}, m_stats{0, 0, 0, 0, 0, 0}
     {
         CacheBlock &block = m_VC[way];
         block.valid = false;
-        // TODO: IDK if this is the best way to initialize this.
+        // Arbitrarily assign the initial LRU positions (we just need that each
+        // of 0,...,VICTIM_SIZE - 1 is present).
         block.lruPosition = way;
     }
 
@@ -24,7 +40,8 @@ Controller::Controller() : m_MM{0}, m_stats{0, 0, 0, 0, 0, 0}
         {
             CacheBlock &block = m_L2[index][way];
             block.valid = false;
-            // TODO: IDK if this is the best way to initialize this.
+            // Arbitrarily assign the initial LRU positions (we just need that
+            // each of 0,...,L2_CACHE_WAYS - 1 is present).
             block.lruPosition = way;
         }
     }
@@ -35,6 +52,7 @@ uint8_t Controller::loadByte(uint32_t address)
     AddressParts parts(address);   // L1 & L2 address segmentation.
     uint32_t VCTag = address >> 2; // VC address has different segmentation.
 
+    // Byte to return.
     uint8_t byte;
 
     // Case A: L1 Hit.
@@ -44,6 +62,7 @@ uint8_t Controller::loadByte(uint32_t address)
     if (block.valid && block.tag == parts.tag)
     {
         byte = block.data[parts.offset];
+        // No other action needed.
         return byte;
     }
     m_stats.missL1++;
@@ -61,13 +80,7 @@ uint8_t Controller::loadByte(uint32_t address)
             // Promote VC block to L1.
             MemoryBlock VCBytes = popFromVC(way);
             auto evictResult = insertIntoL1(VCBytes);
-            if (evictResult.has_value())
-            {
-                MemoryBlock evictedBytes = evictResult.value();
-                cerr << "Discarded block for addresses " << evictedBytes.address
-                     << "-" << evictedBytes.address + BLOCK_SIZE - 1 << "."
-                     << endl;
-            }
+            printEvictionResult(evictResult);
 
             return byte;
         }
@@ -88,13 +101,7 @@ uint8_t Controller::loadByte(uint32_t address)
             // Promote L2 block to L1.
             MemoryBlock L2Bytes = popFromL2(parts.index, way);
             auto evictResult = insertIntoL1(L2Bytes);
-            if (evictResult.has_value())
-            {
-                MemoryBlock evictedBytes = evictResult.value();
-                cerr << "Discarded block for addresses " << evictedBytes.address
-                     << "-" << evictedBytes.address + BLOCK_SIZE - 1 << "."
-                     << endl;
-            }
+            printEvictionResult(evictResult);
 
             return byte;
         }
@@ -110,13 +117,7 @@ uint8_t Controller::loadByte(uint32_t address)
     MMBytes.address = address & ~(0b11); // 4-byte aligned.
     memcpy(MMBytes.data, m_MM + MMBytes.address, BLOCK_SIZE);
     auto evictResult = insertIntoL1(MMBytes);
-    if (evictResult.has_value())
-    {
-        MemoryBlock evictedBytes = evictResult.value();
-        cerr << "Discarded block for addresses " << evictedBytes.address
-             << "-" << evictedBytes.address + BLOCK_SIZE - 1 << "."
-             << endl;
-    }
+    printEvictionResult(evictResult);
 
     return byte;
 }
@@ -276,6 +277,28 @@ void Controller::updateL2MRU(uint8_t setIndex, uint8_t mruWay)
     }
 }
 
+MemoryBlock Controller::popFromVC(uint8_t way)
+{
+    CacheBlock &block = m_VC[way];
+    block.valid = false;
+
+    MemoryBlock bytes;
+    bytes.address = block.tag << 2;
+    memcpy(bytes.data, block.data, BLOCK_SIZE);
+    return bytes;
+}
+
+MemoryBlock Controller::popFromL2(uint8_t index, uint8_t way)
+{
+    CacheBlock &block = m_L2[index][way];
+    block.valid = false;
+
+    MemoryBlock bytes;
+    bytes.address = (block.tag << 6) | (index << 2);
+    memcpy(bytes.data, block.data, BLOCK_SIZE);
+    return bytes;
+}
+
 optional<MemoryBlock> Controller::insertIntoL1(MemoryBlock const &bytes)
 {
     uint8_t setIndex = (bytes.address >> 2) & 0b1111;
@@ -315,7 +338,8 @@ optional<MemoryBlock> Controller::insertIntoVC(MemoryBlock const &bytes)
             break;
         }
         // Otherwise continue finding the LRU block.
-        if (blockToUse == nullptr || block.lruPosition < blockToUse->lruPosition)
+        if (blockToUse == nullptr ||
+            block.lruPosition < blockToUse->lruPosition)
         {
             blockToUse = &block;
         }
@@ -359,7 +383,8 @@ optional<MemoryBlock> Controller::insertIntoL2(MemoryBlock const &bytes)
             break;
         }
         // Otherwise continue finding the LRU block.
-        if (blockToUse == nullptr || block.lruPosition < blockToUse->lruPosition)
+        if (blockToUse == nullptr ||
+            block.lruPosition < blockToUse->lruPosition)
         {
             blockToUse = &block;
         }
@@ -385,27 +410,5 @@ optional<MemoryBlock> Controller::insertIntoL2(MemoryBlock const &bytes)
     MemoryBlock evictedBytes;
     evictedBytes.address = (evictedBlock.tag << 6) | (setIndex << 2);
     memcpy(evictedBytes.data, evictedBlock.data, BLOCK_SIZE);
-    return bytes;
-}
-
-MemoryBlock Controller::popFromVC(uint8_t way)
-{
-    CacheBlock &block = m_VC[way];
-    block.valid = false;
-
-    MemoryBlock bytes;
-    bytes.address = block.tag << 2;
-    memcpy(bytes.data, block.data, BLOCK_SIZE);
-    return bytes;
-}
-
-MemoryBlock Controller::popFromL2(uint8_t index, uint8_t way)
-{
-    CacheBlock &block = m_L2[index][way];
-    block.valid = false;
-
-    MemoryBlock bytes;
-    bytes.address = (block.tag << 6) | (index << 2);
-    memcpy(bytes.data, block.data, BLOCK_SIZE);
     return bytes;
 }

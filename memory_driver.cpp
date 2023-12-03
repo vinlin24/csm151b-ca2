@@ -8,10 +8,13 @@
 
 #include "controller.h"
 
+// Flag to enable dumping memory contents (would flood stderr, for desperate
+// debugging purposes only).
 #define DUMP_MEMORY false
 
 using namespace std;
 
+// Dataclass for one entry in an input trace file.
 struct Trace
 {
     enum Operation
@@ -23,6 +26,7 @@ struct Trace
     uint8_t data;
 };
 
+// Parse the entries in the input trace file into `Trace` models.
 static vector<Trace> const readTraces(ifstream &inputFile)
 {
     string line;
@@ -54,6 +58,8 @@ static vector<Trace> const readTraces(ifstream &inputFile)
 }
 
 /**
+ * Program entry point.
+ *
  * USAGE: ./program FILENAME
  */
 int main(int argc, char const *argv[])
@@ -64,7 +70,9 @@ int main(int argc, char const *argv[])
         return EINVAL;
     }
 
-    string inputFileName(argv[1]);
+    // Load and parse input trace file.
+
+    char const *inputFileName = argv[1];
     ifstream inputFile;
     inputFile.open(inputFileName);
     if (!inputFile.is_open())
@@ -72,12 +80,11 @@ int main(int argc, char const *argv[])
         cerr << "Error opening " << inputFileName << "." << endl;
         return EXIT_FAILURE;
     }
-
     vector<Trace> const traces = readTraces(inputFile);
+
+    // Run main program loop.
+
     Controller controller;
-
-    // Main program loop.
-
     for (Trace const &trace : traces)
     {
         if (trace.op == Trace::READ)
@@ -98,6 +105,8 @@ int main(int argc, char const *argv[])
 #endif // DUMP_MEMORY
         cerr << endl;
     }
+
+    // Compute and output the required statistics.
 
     double L1MissRate = controller.getL1MissRate();
     double L2MissRate = controller.getL2MissRate();
