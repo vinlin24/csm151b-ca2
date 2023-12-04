@@ -202,62 +202,6 @@ double Controller::getAAT() const
     return AAT_L1;
 }
 
-void Controller::dumpMemory() const
-{
-    for (size_t address = 0; address < MEM_SIZE; address++)
-    {
-        uint8_t byte = m_MM[address];
-        if (byte == 0)
-            continue;
-        cerr << address << ": " << static_cast<int>(byte) << endl;
-    }
-}
-
-void Controller::dumpCacheState() const
-{
-    cerr << "L1 blocks: ";
-    for (size_t index = 0; index < L1_CACHE_SETS; index++)
-    {
-        CacheBlock const &block = m_L1[index];
-        if (!block.valid)
-            continue;
-
-        uint32_t address = addressFromParts(block.tag, index);
-        uint32_t wordNum = address >> 2; // To match Campuswire debugging.
-        cerr << wordNum << " ";
-    }
-    cerr << endl;
-
-    cerr << "VC blocks: ";
-    for (size_t way = 0; way < VICTIM_SIZE; way++)
-    {
-        CacheBlock const &block = m_VC[way];
-        if (!block.valid)
-            continue;
-
-        uint32_t address = block.tag << 2;
-        uint32_t wordNum = address >> 2; // To match Campuswire debugging.
-        cerr << wordNum << " ";
-    }
-    cerr << endl;
-
-    cerr << "L2 blocks: ";
-    for (size_t index = 0; index < L2_CACHE_SETS; index++)
-    {
-        for (size_t way = 0; way < L2_CACHE_WAYS; way++)
-        {
-            CacheBlock const &block = m_L2[index][way];
-            if (!block.valid)
-                continue;
-
-            uint32_t address = addressFromParts(block.tag, index);
-            uint32_t wordNum = address >> 2; // To match Campuswire debugging.
-            cerr << wordNum << " ";
-        }
-    }
-    cerr << endl;
-}
-
 void Controller::updateVictimMRU(uint8_t mruWay)
 {
     m_VC[mruWay].lruPosition = VICTIM_SIZE - 1;
@@ -417,4 +361,60 @@ optional<MemoryBlock> Controller::insertIntoL2(MemoryBlock const &bytes)
     evictedBytes.address = addressFromParts(evictedBlock.tag, setIndex);
     memcpy(evictedBytes.data, evictedBlock.data, BLOCK_SIZE);
     return bytes;
+}
+
+void Controller::dumpMemory() const
+{
+    for (size_t address = 0; address < MEM_SIZE; address++)
+    {
+        uint8_t byte = m_MM[address];
+        if (byte == 0)
+            continue;
+        cerr << address << ": " << static_cast<int>(byte) << endl;
+    }
+}
+
+void Controller::dumpCacheState() const
+{
+    cerr << "L1 blocks: ";
+    for (size_t index = 0; index < L1_CACHE_SETS; index++)
+    {
+        CacheBlock const &block = m_L1[index];
+        if (!block.valid)
+            continue;
+
+        uint32_t address = addressFromParts(block.tag, index);
+        uint32_t wordNum = address >> 2; // To match Campuswire debugging.
+        cerr << wordNum << " ";
+    }
+    cerr << endl;
+
+    cerr << "VC blocks: ";
+    for (size_t way = 0; way < VICTIM_SIZE; way++)
+    {
+        CacheBlock const &block = m_VC[way];
+        if (!block.valid)
+            continue;
+
+        uint32_t address = block.tag << 2;
+        uint32_t wordNum = address >> 2; // To match Campuswire debugging.
+        cerr << wordNum << " ";
+    }
+    cerr << endl;
+
+    cerr << "L2 blocks: ";
+    for (size_t index = 0; index < L2_CACHE_SETS; index++)
+    {
+        for (size_t way = 0; way < L2_CACHE_WAYS; way++)
+        {
+            CacheBlock const &block = m_L2[index][way];
+            if (!block.valid)
+                continue;
+
+            uint32_t address = addressFromParts(block.tag, index);
+            uint32_t wordNum = address >> 2; // To match Campuswire debugging.
+            cerr << wordNum << " ";
+        }
+    }
+    cerr << endl;
 }
