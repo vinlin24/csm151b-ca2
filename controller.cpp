@@ -21,6 +21,7 @@ static void printEvictionResult(optional<MemoryBlock> const &evictResult)
 }
 
 // Regenerate a 4-byte aligned memory address given a block's tag and set index.
+// Applies to the address segmentation required for our L1 and L2 design.
 static inline uint32_t addressFromParts(uint32_t tag, uint8_t index)
 {
     return (tag << 6) | (index << 2);
@@ -171,7 +172,7 @@ void Controller::storeByte(uint32_t address, uint8_t byte)
         }
     }
 
-    // Case D: L1 Miss, VC Miss, L2 Miss.
+    // Case D: L1 Miss -> VC Miss -> L2 Miss -> MM Access.
 
     m_MM[address] = byte; // Write-no-allocate.
 }
@@ -190,13 +191,13 @@ double Controller::getAAT() const
 {
     // AAT = HitTime + MissRate * MissPenalty.
 
-    double MR_L2 = static_cast<double>(m_stats.missL2) / m_stats.accessL2;
+    double MR_L2 = getL2MissRate();
     double AAT_L2 = L2_HIT_TIME + MR_L2 * MM_ACCESS_TIME;
 
     double MR_VC = static_cast<double>(m_stats.missVC) / m_stats.accessVC;
     double AAT_VC = VC_HIT_TIME + MR_VC * AAT_L2;
 
-    double MR_L1 = static_cast<double>(m_stats.missL1) / m_stats.accessL1;
+    double MR_L1 = getL1MissRate();
     double AAT_L1 = L1_HIT_TIME + MR_L1 * AAT_VC;
 
     return AAT_L1;
