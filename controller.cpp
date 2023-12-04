@@ -20,6 +20,12 @@ static void printEvictionResult(optional<MemoryBlock> const &evictResult)
     }
 }
 
+// Regenerate a 4-byte aligned memory address given a block's tag and set index.
+static inline uint32_t addressFromParts(uint32_t tag, uint8_t index)
+{
+    return (tag << 6) | (index << 2);
+}
+
 Controller::Controller() : m_MM{0}, m_stats{0, 0, 0, 0, 0, 0}
 {
     for (size_t index = 0; index < L1_CACHE_SETS; index++)
@@ -216,7 +222,7 @@ void Controller::dumpCacheState() const
         if (!block.valid)
             continue;
 
-        uint32_t address = (block.tag << 6) | (index << 2);
+        uint32_t address = addressFromParts(block.tag, index);
         uint32_t wordNum = address >> 2; // To match Campuswire debugging.
         cerr << wordNum << " ";
     }
@@ -244,7 +250,7 @@ void Controller::dumpCacheState() const
             if (!block.valid)
                 continue;
 
-            uint32_t address = (block.tag << 6) | (index << 2);
+            uint32_t address = addressFromParts(block.tag, index);
             uint32_t wordNum = address >> 2; // To match Campuswire debugging.
             cerr << wordNum << " ";
         }
@@ -294,21 +300,21 @@ MemoryBlock Controller::popFromL2(uint8_t index, uint8_t way)
     block.valid = false;
 
     MemoryBlock bytes;
-    bytes.address = (block.tag << 6) | (index << 2);
+    bytes.address = addressFromParts(block.tag, index);
     memcpy(bytes.data, block.data, BLOCK_SIZE);
     return bytes;
 }
 
 optional<MemoryBlock> Controller::insertIntoL1(MemoryBlock const &bytes)
 {
-    uint8_t setIndex = (bytes.address >> 2) & 0b1111;
+    uint8_t setIndex = AddressParts(bytes.address).index;
     CacheBlock &block = m_L1[setIndex];
 
     // Create a copy before overwriting the current block.
     CacheBlock evictedBlock(block);
 
     // Overwrite current block with incoming data.
-    block.tag = bytes.address >> 6;
+    block.tag = AddressParts(bytes.address).tag;
     memcpy(block.data, bytes.data, BLOCK_SIZE);
     block.valid = true;
 
@@ -320,7 +326,7 @@ optional<MemoryBlock> Controller::insertIntoL1(MemoryBlock const &bytes)
 
     // Otherwise, try to insert the evicted bytes into the lower level cache.
     MemoryBlock evictedBytes;
-    evictedBytes.address = (evictedBlock.tag << 6) | (setIndex << 2);
+    evictedBytes.address = addressFromParts(evictedBlock.tag, setIndex);
     memcpy(evictedBytes.data, evictedBlock.data, BLOCK_SIZE);
     return insertIntoVC(evictedBytes);
 }
@@ -370,7 +376,7 @@ optional<MemoryBlock> Controller::insertIntoVC(MemoryBlock const &bytes)
 
 optional<MemoryBlock> Controller::insertIntoL2(MemoryBlock const &bytes)
 {
-    uint8_t setIndex = (bytes.address >> 2) & 0b1111;
+    uint8_t setIndex = AddressParts(bytes.address).index;
 
     // Find the LRU block. If there's still a vacancy, just use that.
     CacheBlock *blockToUse = nullptr;
@@ -396,7 +402,7 @@ optional<MemoryBlock> Controller::insertIntoL2(MemoryBlock const &bytes)
     CacheBlock evictedBlock(block);
 
     // Overwrite current block with incoming data.
-    block.tag = bytes.address >> 6;
+    block.tag = AddressParts(bytes.address).tag;
     memcpy(block.data, bytes.data, BLOCK_SIZE);
     // Set the just-written block to the MRU.
     updateL2MRU(setIndex, blockToUse - m_L2[setIndex]);
@@ -408,7 +414,7 @@ optional<MemoryBlock> Controller::insertIntoL2(MemoryBlock const &bytes)
 
     // Otherwise, return the evicted bytes.
     MemoryBlock evictedBytes;
-    evictedBytes.address = (evictedBlock.tag << 6) | (setIndex << 2);
+    evictedBytes.address = addressFromParts(evictedBlock.tag, setIndex);
     memcpy(evictedBytes.data, evictedBlock.data, BLOCK_SIZE);
     return bytes;
 }
